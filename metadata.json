@@ -1,0 +1,5 @@
+{
+  "name": "ECHO - Aurora Mission AI",
+  "description": "Interface for ECHO, the onboard AI support for the Aurora Mission to Aurelis-3.",
+  "requestFramePermissions": []
+}
