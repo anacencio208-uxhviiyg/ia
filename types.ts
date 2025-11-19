@@ -24,3 +24,10 @@ export interface CrewMember {
   role: string;
   status: string;
 }
+
+declare global {
+  interface AIStudio {
+    hasSelectedApiKey: () => Promise<boolean>;
+    openSelectKey: () => Promise<void>;
+  }
+}

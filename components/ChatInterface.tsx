@@ -14,6 +14,7 @@ const ChatInterface: React.FC = () => {
   ]);
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isAuthRequired, setIsAuthRequired] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
   // We keep the chat instance in a ref to persist context
@@ -28,40 +29,88 @@ const ChatInterface: React.FC = () => {
     scrollToBottom();
   }, [messages]);
 
-  // Initialize Chat Session
-  useEffect(() => {
-    const initChat = async () => {
-      try {
-        const apiKey = process.env.API_KEY;
-        if (!apiKey) {
-          setError("System Alert: API Key missing from environmental controls.");
-          return;
-        }
-
-        const ai = new GoogleGenAI({ apiKey });
-        
-        chatSessionRef.current = ai.chats.create({
-          model: 'gemini-2.5-flash',
-          config: {
-            systemInstruction: ECHO_SYSTEM_INSTRUCTION,
-            temperature: 0.7, 
-            maxOutputTokens: 1000,
-          },
-        });
-      } catch (err) {
-        console.error("Failed to initialize ECHO:", err);
-        setError("Critical Error: Unable to interface with Neural Core.");
+  const initChat = async () => {
+    try {
+      // In this environment, we must ensure we have a key before proceeding.
+      // We try process.env.API_KEY first, then check if the user needs to select one via aistudio.
+      let hasKey = false;
+      
+      if (process.env.API_KEY) {
+        hasKey = true;
+      } else if (window.aistudio) {
+        hasKey = await window.aistudio.hasSelectedApiKey();
       }
-    };
 
+      if (!hasKey) {
+        setIsAuthRequired(true);
+        return;
+      }
+
+      // If we have a key (or assume we do after check), we initialize.
+      // We rely on process.env.API_KEY being populated by the environment after selection.
+      const apiKey = process.env.API_KEY;
+      
+      // If still no key variable after checks, we can't proceed, but we'll let the loop handle it
+      // or show the auth screen if aistudio is available.
+      if (!apiKey) {
+         if (window.aistudio) {
+             setIsAuthRequired(true);
+             return;
+         } else {
+             setError("System Alert: API Key missing from environmental controls.");
+             return;
+         }
+      }
+
+      const ai = new GoogleGenAI({ apiKey });
+      
+      chatSessionRef.current = ai.chats.create({
+        model: 'gemini-2.5-flash',
+        config: {
+          systemInstruction: ECHO_SYSTEM_INSTRUCTION,
+          temperature: 0.7, 
+          maxOutputTokens: 1000,
+        },
+      });
+      
+      // If successful, ensure auth screen is hidden and error cleared
+      setIsAuthRequired(false);
+      setError(null);
+
+    } catch (err) {
+      console.error("Failed to initialize ECHO:", err);
+      setError("Critical Error: Unable to interface with Neural Core.");
+    }
+  };
+
+  // Initialize on mount
+  useEffect(() => {
     initChat();
   }, []);
+
+  const handleAuthClick = async () => {
+      if (window.aistudio) {
+          try {
+            await window.aistudio.openSelectKey();
+            // After selection, re-run initialization
+            await initChat();
+          } catch (e) {
+            console.error("Auth selection failed", e);
+          }
+      }
+  };
 
   const handleSendMessage = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     
-    // Capture the current chat session locally to ensure it doesn't change or become null during async ops
-    const chat = chatSessionRef.current;
+    // Capture local ref
+    let chat = chatSessionRef.current;
+
+    // If chat isn't ready, try initializing one last time (e.g. if key was just set)
+    if (!chat) {
+        await initChat();
+        chat = chatSessionRef.current;
+    }
 
     if (!inputText.trim() || !chat || isLoading) return;
 
@@ -113,14 +162,58 @@ const ChatInterface: React.FC = () => {
         : msg
       ));
 
-    } catch (err) {
+    } catch (err: any) {
       console.error("Communication breakdown:", err);
-      setError("Transmission Error: Link to ECHO unstable.");
+      
+      // Handle specific key error
+      if (err.message && err.message.includes("Requested entity was not found")) {
+          setError("Security Token Invalid. Re-authorization required.");
+          setIsAuthRequired(true);
+          chatSessionRef.current = null; // Reset session
+      } else {
+          setError("Transmission Error: Link to ECHO unstable.");
+      }
+      
       setIsLoading(false);
+      
+      // Clean up the streaming message if it failed empty
+      setMessages(prev => prev.map(msg => 
+        msg.isStreaming 
+        ? { ...msg, isStreaming: false, text: msg.text || "Transmission interrupted." } 
+        : msg
+      ));
+
     } finally {
       setIsLoading(false);
     }
   };
+
+  // Render Auth Screen if needed
+  if (isAuthRequired) {
+      return (
+        <div className="flex flex-col flex-1 h-full relative bg-[url('https://picsum.photos/id/903/1600/900')] bg-cover bg-center items-center justify-center">
+            <div className="absolute inset-0 bg-slate-950/90 z-0"></div>
+            <div className="relative z-10 p-8 bg-slate-900/90 border border-cyan-500/30 rounded-lg shadow-[0_0_50px_rgba(0,240,255,0.1)] max-w-md text-center backdrop-blur-md">
+                <div className="w-16 h-16 border-2 border-holo-cyan rounded-full flex items-center justify-center mx-auto mb-6 animate-pulse-slow">
+                    <div className="w-10 h-10 bg-holo-cyan/20 rounded-full"></div>
+                </div>
+                <h2 className="text-2xl font-bold text-white font-mono mb-2 tracking-widest">SECURITY ALERT</h2>
+                <p className="text-cyan-400/80 font-mono text-sm mb-8">
+                    Neural Link Authorization required to access ECHO mainframe.
+                </p>
+                <button 
+                    onClick={handleAuthClick}
+                    className="bg-holo-cyan/10 hover:bg-holo-cyan/20 text-holo-cyan border border-holo-cyan px-8 py-3 rounded font-mono tracking-widest uppercase transition-all hover:shadow-[0_0_20px_rgba(0,240,255,0.3)]"
+                >
+                    INITIALIZE LINK
+                </button>
+                <p className="mt-6 text-[10px] text-cyan-700 font-mono">
+                    MISSION CONTROL // AURORA PROTOCOL
+                </p>
+            </div>
+        </div>
+      );
+  }
 
   return (
     <div className="flex flex-col flex-1 h-full relative bg-[url('https://picsum.photos/id/903/1600/900')] bg-cover bg-center">
@@ -172,7 +265,7 @@ const ChatInterface: React.FC = () => {
         ))}
         {error && (
             <div className="flex justify-center">
-                <div className="bg-red-900/20 border border-red-500/50 text-red-400 px-4 py-2 rounded font-mono text-sm">
+                <div className="bg-red-900/20 border border-red-500/50 text-red-400 px-4 py-2 rounded font-mono text-sm backdrop-blur-sm">
                     ! {error}
                 </div>
             </div>
