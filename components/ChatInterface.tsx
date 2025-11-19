@@ -8,7 +8,7 @@ const ChatInterface: React.FC = () => {
     {
       id: 'init',
       role: MessageRole.MODEL,
-      text: "ECHO System Online. Connected to Argo IX Mainframe. How can I assist you with Mission Aurora today?",
+      text: "Sistema ECHO Online. Conectado ao Mainframe da Argo IX. Como posso ajudar na Missão Aurora hoje?",
       timestamp: new Date(),
     }
   ]);
@@ -57,7 +57,7 @@ const ChatInterface: React.FC = () => {
              setIsAuthRequired(true);
              return;
          } else {
-             setError("System Alert: API Key missing from environmental controls.");
+             setError("Alerta do Sistema: Chave de API ausente nos controles ambientais.");
              return;
          }
       }
@@ -79,7 +79,7 @@ const ChatInterface: React.FC = () => {
 
     } catch (err) {
       console.error("Failed to initialize ECHO:", err);
-      setError("Critical Error: Unable to interface with Neural Core.");
+      setError("Erro Crítico: Incapaz de conectar ao Núcleo Neural.");
     }
   };
 
@@ -95,7 +95,7 @@ const ChatInterface: React.FC = () => {
             // After selection, re-run initialization
             await initChat();
           } catch (e) {
-            console.error("Auth selection failed", e);
+            console.error("Falha na seleção de autenticação", e);
           }
       }
   };
@@ -167,11 +167,11 @@ const ChatInterface: React.FC = () => {
       
       // Handle specific key error
       if (err.message && err.message.includes("Requested entity was not found")) {
-          setError("Security Token Invalid. Re-authorization required.");
+          setError("Token de Segurança Inválido. Reautorização necessária.");
           setIsAuthRequired(true);
           chatSessionRef.current = null; // Reset session
       } else {
-          setError("Transmission Error: Link to ECHO unstable.");
+          setError("Erro de Transmissão: Link com ECHO instável.");
       }
       
       setIsLoading(false);
@@ -179,7 +179,7 @@ const ChatInterface: React.FC = () => {
       // Clean up the streaming message if it failed empty
       setMessages(prev => prev.map(msg => 
         msg.isStreaming 
-        ? { ...msg, isStreaming: false, text: msg.text || "Transmission interrupted." } 
+        ? { ...msg, isStreaming: false, text: msg.text || "Transmissão interrompida." } 
         : msg
       ));
 
@@ -197,18 +197,18 @@ const ChatInterface: React.FC = () => {
                 <div className="w-16 h-16 border-2 border-holo-cyan rounded-full flex items-center justify-center mx-auto mb-6 animate-pulse-slow">
                     <div className="w-10 h-10 bg-holo-cyan/20 rounded-full"></div>
                 </div>
-                <h2 className="text-2xl font-bold text-white font-mono mb-2 tracking-widest">SECURITY ALERT</h2>
+                <h2 className="text-2xl font-bold text-white font-mono mb-2 tracking-widest">ALERTA DE SEGURANÇA</h2>
                 <p className="text-cyan-400/80 font-mono text-sm mb-8">
-                    Neural Link Authorization required to access ECHO mainframe.
+                    É necessária autorização do Neural Link para acessar o mainframe do ECHO.
                 </p>
                 <button 
                     onClick={handleAuthClick}
                     className="bg-holo-cyan/10 hover:bg-holo-cyan/20 text-holo-cyan border border-holo-cyan px-8 py-3 rounded font-mono tracking-widest uppercase transition-all hover:shadow-[0_0_20px_rgba(0,240,255,0.3)]"
                 >
-                    INITIALIZE LINK
+                    INICIALIZAR CONEXÃO
                 </button>
                 <p className="mt-6 text-[10px] text-cyan-700 font-mono">
-                    MISSION CONTROL // AURORA PROTOCOL
+                    CONTROLE DA MISSÃO // PROTOCOLO AURORA
                 </p>
             </div>
         </div>
@@ -225,10 +225,10 @@ const ChatInterface: React.FC = () => {
       <div className="relative z-10 p-4 border-b border-cyan-900/30 bg-slate-950/50 backdrop-blur flex justify-between items-center">
         <div className="flex items-center gap-3">
             <div className={`w-2 h-2 rounded-full ${error ? 'bg-red-500' : 'bg-holo-cyan animate-pulse-slow'}`}></div>
-            <span className="font-mono text-sm text-cyan-400 tracking-widest">ECHO INTERFACE // ONLINE</span>
+            <span className="font-mono text-sm text-cyan-400 tracking-widest">INTERFACE ECHO // ONLINE</span>
         </div>
         <div className="font-mono text-xs text-cyan-700">
-            STARDATE {new Date().getFullYear()}.{new Date().getMonth() + 1}.{new Date().getDate()}
+            DATA ESTELAR {new Date().getFullYear()}.{new Date().getMonth() + 1}.{new Date().getDate()}
         </div>
       </div>
 
@@ -248,7 +248,7 @@ const ChatInterface: React.FC = () => {
             >
               <div className="flex items-center gap-2 mb-2 border-b border-white/5 pb-1">
                 <span className="text-[10px] font-mono uppercase tracking-wider opacity-70">
-                    {msg.role === MessageRole.USER ? 'CMD // COMMANDER' : 'AI // ECHO'}
+                    {msg.role === MessageRole.USER ? 'CMD // COMANDANTE' : 'IA // ECHO'}
                 </span>
                 <span className="text-[10px] font-mono opacity-40 ml-auto">
                     {msg.timestamp.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
@@ -281,7 +281,7 @@ const ChatInterface: React.FC = () => {
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
             disabled={isLoading}
-            placeholder="Enter query for Mission Control..."
+            placeholder="Insira o comando para o Controle da Missão..."
             className="flex-1 bg-slate-900/50 border border-cyan-900/50 rounded px-4 py-3 text-cyan-100 focus:outline-none focus:border-holo-cyan/70 focus:shadow-[0_0_10px_rgba(0,240,255,0.2)] font-mono text-sm placeholder-cyan-800 transition-all"
           />
           <button
@@ -289,7 +289,7 @@ const ChatInterface: React.FC = () => {
             disabled={isLoading || !inputText.trim()}
             className="bg-cyan-900/30 hover:bg-cyan-800/40 text-holo-cyan border border-cyan-700/50 px-6 py-2 rounded font-mono tracking-widest uppercase text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed hover:shadow-[0_0_10px_rgba(0,240,255,0.2)]"
           >
-            {isLoading ? 'Processing...' : 'Transmit'}
+            {isLoading ? 'Processando...' : 'Transmitir'}
           </button>
         </form>
       </div>

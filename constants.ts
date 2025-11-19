@@ -47,19 +47,19 @@ export const ECHO_SYSTEM_INSTRUCTION = `
 `;
 
 export const MISSION_STATS: MissionStat[] = [
-  { label: 'VELOCITY', value: '0.5', unit: 'c', status: 'nominal' },
-  { label: 'DIST. TO TARGET', value: '14', unit: 'LY', status: 'nominal' },
-  { label: 'HULL INTEGRITY', value: '99.8', unit: '%', status: 'nominal' },
-  { label: 'REACTOR', value: 'STABLE', status: 'nominal' },
-  { label: 'LIFE SUPPORT', value: 'ACTIVE', status: 'nominal' },
-  { label: 'GRAVITY', value: '1.0', unit: 'G', status: 'nominal' },
+  { label: 'Velocidade', value: '0.5', unit: 'c', status: 'nominal' },
+  { label: 'Reator', value: '98.4', unit: '%', status: 'nominal' },
+  { label: 'Suporte Vida', value: '100', unit: '%', status: 'nominal' },
+  { label: 'Dist. Percorrida', value: '4.2', unit: 'AL', status: 'nominal' },
+  { label: 'Tempo Restante', value: '19.6', unit: 'Anos', status: 'nominal' },
+  { label: 'Escudos', value: 'ATIVO', unit: '', status: 'nominal' },
 ];
 
 export const CREW_MANIFEST: CrewMember[] = [
-  { name: 'Ana Clara', role: 'Commander', status: 'Active' },
-  { name: 'Davi Silveira', role: 'Engineering', status: 'Active' },
-  { name: 'Júlia', role: 'Bio-Science', status: 'Active' },
-  { name: 'Maria Fernanda', role: 'Medical', status: 'Active' },
-  { name: 'Melissa', role: 'Navigation', status: 'Active' },
-  { name: 'Sofia', role: 'Comms', status: 'Active' },
+  { name: 'Ana Clara', role: 'Comandante', status: 'Ativo' },
+  { name: 'Davi Silveira', role: 'Eng. Chefe', status: 'Ativo' },
+  { name: 'Júlia', role: 'Bióloga', status: 'Ativo' },
+  { name: 'Maria Fernanda', role: 'Médica', status: 'Ativo' },
+  { name: 'Melissa', role: 'Esp. Comms', status: 'Ativo' },
+  { name: 'Sofia', role: 'Navegadora', status: 'Ativo' },
 ];
