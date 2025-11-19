@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { GoogleGenAI, Chat, GenerateContentResponse } from "@google/genai";
 import { ChatMessage, MessageRole } from '../types';
@@ -8,7 +9,7 @@ const ChatInterface: React.FC = () => {
     {
       id: 'init',
       role: MessageRole.MODEL,
-      text: "Sistema ECHO Online. Conectado ao Mainframe da Argo IX. Como posso ajudar na Missão Aurora hoje?",
+      text: "Sistema ECHO Online. Conectado ao Mainframe da Argo IX. Aguardando comandos da missão.",
       timestamp: new Date(),
     }
   ]);
@@ -28,61 +29,48 @@ const ChatInterface: React.FC = () => {
     scrollToBottom();
   }, [messages]);
 
-  const initChat = async () => {
-    try {
-      // Automatic check for API key environment
-      if (window.aistudio) {
-        const hasKey = await window.aistudio.hasSelectedApiKey();
-        if (!hasKey) {
-          // Automatically open selection if needed, without blocking UI with a custom screen
-          await window.aistudio.openSelectKey();
-        }
-      }
-
-      const apiKey = process.env.API_KEY;
-      
-      if (!apiKey) {
-         // Fallback error if environment is still not ready
-         setError("Sistema offline: Chave de API não detectada.");
-         return;
-      }
-
-      const ai = new GoogleGenAI({ apiKey });
-      
-      chatSessionRef.current = ai.chats.create({
-        model: 'gemini-2.5-flash',
-        config: {
-          systemInstruction: ECHO_SYSTEM_INSTRUCTION,
-          temperature: 0.7, 
-          maxOutputTokens: 1000,
-        },
-      });
-      
-      setError(null);
-
-    } catch (err) {
-      console.error("Failed to initialize ECHO:", err);
-      setError("Erro Crítico: Incapaz de conectar ao Núcleo Neural.");
+  const getChatSession = async () => {
+    // If we already have a session, return it
+    if (chatSessionRef.current) {
+      return chatSessionRef.current;
     }
-  };
 
-  // Initialize on mount
-  useEffect(() => {
-    initChat();
-  }, []);
+    // Check/Request API Key
+    let apiKey = process.env.API_KEY;
+    
+    // If no key in env, try the window.aistudio helper
+    if (!apiKey && window.aistudio) {
+      const hasKey = await window.aistudio.hasSelectedApiKey();
+      if (!hasKey) {
+        await window.aistudio.openSelectKey();
+      }
+      // In some environments, we might need to wait a tick or access the updated env
+      apiKey = process.env.API_KEY;
+    }
+
+    if (!apiKey) {
+      throw new Error("Chave de acesso neural não detectada.");
+    }
+
+    // Initialize GenAI
+    const ai = new GoogleGenAI({ apiKey });
+    
+    const chat = ai.chats.create({
+      model: 'gemini-2.5-flash',
+      config: {
+        systemInstruction: ECHO_SYSTEM_INSTRUCTION,
+        temperature: 0.7, 
+      },
+    });
+    
+    chatSessionRef.current = chat;
+    return chat;
+  };
 
   const handleSendMessage = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     
-    let chat = chatSessionRef.current;
-
-    // If chat isn't ready, try initializing
-    if (!chat) {
-        await initChat();
-        chat = chatSessionRef.current;
-    }
-
-    if (!inputText.trim() || !chat || isLoading) return;
+    if (!inputText.trim() || isLoading) return;
 
     const userMsgText = inputText;
     setInputText('');
@@ -98,17 +86,19 @@ const ChatInterface: React.FC = () => {
     setMessages(prev => [...prev, userMsg]);
     setIsLoading(true);
 
-    try {
-      // Create a placeholder for the streaming response
-      const responseId = (Date.now() + 1).toString();
-      setMessages(prev => [...prev, {
-        id: responseId,
-        role: MessageRole.MODEL,
-        text: '',
-        timestamp: new Date(),
-        isStreaming: true
-      }]);
+    // Create a placeholder for the streaming response
+    const responseId = (Date.now() + 1).toString();
+    setMessages(prev => [...prev, {
+      id: responseId,
+      role: MessageRole.MODEL,
+      text: '',
+      timestamp: new Date(),
+      isStreaming: true
+    }]);
 
+    try {
+      const chat = await getChatSession();
+      
       const resultStream = await chat.sendMessageStream({ message: userMsgText });
       
       let fullText = '';
@@ -135,24 +125,22 @@ const ChatInterface: React.FC = () => {
     } catch (err: any) {
       console.error("Communication breakdown:", err);
       
-      // Auto-retry logic for key issues could go here, but we just show error
-      if (err.message && err.message.includes("Requested entity was not found")) {
-          setError("Erro de Autenticação: Tentando reconectar...");
-          // Try to re-trigger auth flow if it was a key issue
+      // Handle specific API Key errors by forcing a reset of the session
+      if (err.message && (err.message.includes("API key") || err.message.includes("403") || err.message.includes("not found"))) {
+          chatSessionRef.current = null; // Reset session
+          setError("Erro de Autenticação: Chave inválida ou expirada. Tente novamente.");
           if (window.aistudio) {
-            await window.aistudio.openSelectKey();
-            await initChat();
+             // Prompt user again if possible
+             try { await window.aistudio.openSelectKey(); } catch(e) {}
           }
       } else {
-          setError("Erro de Transmissão: Link com ECHO instável.");
+          setError(`Erro de Sistema: ${err.message || "Falha na comunicação com ECHO."}`);
       }
-      
-      setIsLoading(false);
       
       // Clean up the streaming message if it failed empty
       setMessages(prev => prev.map(msg => 
-        msg.isStreaming 
-        ? { ...msg, isStreaming: false, text: msg.text || "Transmissão interrompida." } 
+        msg.id === responseId
+        ? { ...msg, isStreaming: false, text: msg.text || " [SINAL PERDIDO] " } 
         : msg
       ));
 
@@ -160,6 +148,14 @@ const ChatInterface: React.FC = () => {
       setIsLoading(false);
     }
   };
+
+  // Try to connect on mount silently
+  useEffect(() => {
+    getChatSession().catch(() => {
+        // Ignore initial errors, we'll catch them when the user tries to send
+        // or we could show a "System Offline" indicator status here.
+    });
+  }, []);
 
   return (
     <div className="flex flex-col flex-1 h-full relative bg-[url('https://picsum.photos/id/903/1600/900')] bg-cover bg-center">
@@ -170,30 +166,32 @@ const ChatInterface: React.FC = () => {
       {/* Header */}
       <div className="relative z-10 p-4 border-b border-cyan-900/30 bg-slate-950/50 backdrop-blur flex justify-between items-center">
         <div className="flex items-center gap-3">
-            <div className={`w-2 h-2 rounded-full ${error ? 'bg-red-500' : 'bg-holo-cyan animate-pulse-slow'}`}></div>
-            <span className="font-mono text-sm text-cyan-400 tracking-widest">INTERFACE ECHO // ONLINE</span>
+            <div className={`w-2 h-2 rounded-full ${error ? 'bg-alert-red animate-pulse' : 'bg-holo-cyan animate-pulse-slow'}`}></div>
+            <span className={`font-mono text-sm tracking-widest ${error ? 'text-alert-red' : 'text-cyan-400'}`}>
+              {error ? 'ALERTA DE SISTEMA' : 'INTERFACE ECHO // ONLINE'}
+            </span>
         </div>
-        <div className="font-mono text-xs text-cyan-700">
+        <div className="font-mono text-xs text-cyan-700 hidden sm:block">
             DATA ESTELAR {new Date().getFullYear()}.{new Date().getMonth() + 1}.{new Date().getDate()}
         </div>
       </div>
 
       {/* Messages Area */}
-      <div className="relative z-10 flex-1 overflow-y-auto p-4 space-y-4">
+      <div className="relative z-10 flex-1 overflow-y-auto p-4 space-y-4 scroll-smooth">
         {messages.map((msg) => (
           <div 
             key={msg.id} 
             className={`flex ${msg.role === MessageRole.USER ? 'justify-end' : 'justify-start'}`}
           >
             <div 
-              className={`max-w-[80%] md:max-w-[70%] rounded p-4 border ${
+              className={`max-w-[85%] md:max-w-[70%] rounded p-4 border ${
                 msg.role === MessageRole.USER 
                   ? 'bg-cyan-950/40 border-cyan-700/50 text-cyan-50' 
-                  : 'bg-slate-900/80 border-cyan-900/30 text-cyan-100 shadow-[0_0_15px_rgba(0,240,255,0.1)]'
+                  : 'bg-slate-900/90 border-cyan-900/30 text-cyan-100 shadow-[0_0_15px_rgba(0,240,255,0.1)]'
               }`}
             >
               <div className="flex items-center gap-2 mb-2 border-b border-white/5 pb-1">
-                <span className="text-[10px] font-mono uppercase tracking-wider opacity-70">
+                <span className={`text-[10px] font-mono uppercase tracking-wider opacity-70 ${msg.role === MessageRole.MODEL ? 'text-holo-cyan' : 'text-emerald-400'}`}>
                     {msg.role === MessageRole.USER ? 'CMD // COMANDANTE' : 'IA // ECHO'}
                 </span>
                 <span className="text-[10px] font-mono opacity-40 ml-auto">
@@ -210,9 +208,9 @@ const ChatInterface: React.FC = () => {
           </div>
         ))}
         {error && (
-            <div className="flex justify-center">
-                <div className="bg-red-900/20 border border-red-500/50 text-red-400 px-4 py-2 rounded font-mono text-sm backdrop-blur-sm">
-                    ! {error}
+            <div className="flex justify-center animate-pulse">
+                <div className="bg-red-950/80 border border-red-500/50 text-red-400 px-6 py-2 rounded font-mono text-xs backdrop-blur-sm shadow-[0_0_10px_rgba(255,0,0,0.2)]">
+                    ⚠ {error}
                 </div>
             </div>
         )}
@@ -227,15 +225,20 @@ const ChatInterface: React.FC = () => {
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
             disabled={isLoading}
-            placeholder="Insira o comando para o Controle da Missão..."
-            className="flex-1 bg-slate-900/50 border border-cyan-900/50 rounded px-4 py-3 text-cyan-100 focus:outline-none focus:border-holo-cyan/70 focus:shadow-[0_0_10px_rgba(0,240,255,0.2)] font-mono text-sm placeholder-cyan-800 transition-all"
+            placeholder={isLoading ? "Recebendo transmissão..." : "Insira o comando para o Controle da Missão..."}
+            className="flex-1 bg-slate-900/50 border border-cyan-900/50 rounded px-4 py-3 text-cyan-100 focus:outline-none focus:border-holo-cyan/70 focus:shadow-[0_0_10px_rgba(0,240,255,0.2)] font-mono text-sm placeholder-cyan-800 transition-all disabled:opacity-50"
           />
           <button
             type="submit"
             disabled={isLoading || !inputText.trim()}
-            className="bg-cyan-900/30 hover:bg-cyan-800/40 text-holo-cyan border border-cyan-700/50 px-6 py-2 rounded font-mono tracking-widest uppercase text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed hover:shadow-[0_0_10px_rgba(0,240,255,0.2)]"
+            className="bg-cyan-900/30 hover:bg-cyan-800/40 text-holo-cyan border border-cyan-700/50 px-6 py-2 rounded font-mono tracking-widest uppercase text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed hover:shadow-[0_0_10px_rgba(0,240,255,0.2)] flex items-center gap-2"
           >
-            {isLoading ? 'Processando...' : 'Transmitir'}
+            {isLoading ? (
+                <>
+                 <span className="w-2 h-2 bg-holo-cyan animate-ping rounded-full"></span>
+                 <span className="hidden md:inline">Enviando</span>
+                </>
+            ) : 'Transmitir'}
           </button>
         </form>
       </div>
