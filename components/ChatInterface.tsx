@@ -14,7 +14,6 @@ const ChatInterface: React.FC = () => {
   ]);
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [isAuthRequired, setIsAuthRequired] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
   // We keep the chat instance in a ref to persist context
@@ -31,35 +30,21 @@ const ChatInterface: React.FC = () => {
 
   const initChat = async () => {
     try {
-      // In this environment, we must ensure we have a key before proceeding.
-      // We try process.env.API_KEY first, then check if the user needs to select one via aistudio.
-      let hasKey = false;
-      
-      if (process.env.API_KEY) {
-        hasKey = true;
-      } else if (window.aistudio) {
-        hasKey = await window.aistudio.hasSelectedApiKey();
+      // Automatic check for API key environment
+      if (window.aistudio) {
+        const hasKey = await window.aistudio.hasSelectedApiKey();
+        if (!hasKey) {
+          // Automatically open selection if needed, without blocking UI with a custom screen
+          await window.aistudio.openSelectKey();
+        }
       }
 
-      if (!hasKey) {
-        setIsAuthRequired(true);
-        return;
-      }
-
-      // If we have a key (or assume we do after check), we initialize.
-      // We rely on process.env.API_KEY being populated by the environment after selection.
       const apiKey = process.env.API_KEY;
       
-      // If still no key variable after checks, we can't proceed, but we'll let the loop handle it
-      // or show the auth screen if aistudio is available.
       if (!apiKey) {
-         if (window.aistudio) {
-             setIsAuthRequired(true);
-             return;
-         } else {
-             setError("Alerta do Sistema: Chave de API ausente nos controles ambientais.");
-             return;
-         }
+         // Fallback error if environment is still not ready
+         setError("Sistema offline: Chave de API não detectada.");
+         return;
       }
 
       const ai = new GoogleGenAI({ apiKey });
@@ -73,8 +58,6 @@ const ChatInterface: React.FC = () => {
         },
       });
       
-      // If successful, ensure auth screen is hidden and error cleared
-      setIsAuthRequired(false);
       setError(null);
 
     } catch (err) {
@@ -88,25 +71,12 @@ const ChatInterface: React.FC = () => {
     initChat();
   }, []);
 
-  const handleAuthClick = async () => {
-      if (window.aistudio) {
-          try {
-            await window.aistudio.openSelectKey();
-            // After selection, re-run initialization
-            await initChat();
-          } catch (e) {
-            console.error("Falha na seleção de autenticação", e);
-          }
-      }
-  };
-
   const handleSendMessage = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     
-    // Capture local ref
     let chat = chatSessionRef.current;
 
-    // If chat isn't ready, try initializing one last time (e.g. if key was just set)
+    // If chat isn't ready, try initializing
     if (!chat) {
         await initChat();
         chat = chatSessionRef.current;
@@ -165,11 +135,14 @@ const ChatInterface: React.FC = () => {
     } catch (err: any) {
       console.error("Communication breakdown:", err);
       
-      // Handle specific key error
+      // Auto-retry logic for key issues could go here, but we just show error
       if (err.message && err.message.includes("Requested entity was not found")) {
-          setError("Token de Segurança Inválido. Reautorização necessária.");
-          setIsAuthRequired(true);
-          chatSessionRef.current = null; // Reset session
+          setError("Erro de Autenticação: Tentando reconectar...");
+          // Try to re-trigger auth flow if it was a key issue
+          if (window.aistudio) {
+            await window.aistudio.openSelectKey();
+            await initChat();
+          }
       } else {
           setError("Erro de Transmissão: Link com ECHO instável.");
       }
@@ -187,33 +160,6 @@ const ChatInterface: React.FC = () => {
       setIsLoading(false);
     }
   };
-
-  // Render Auth Screen if needed
-  if (isAuthRequired) {
-      return (
-        <div className="flex flex-col flex-1 h-full relative bg-[url('https://picsum.photos/id/903/1600/900')] bg-cover bg-center items-center justify-center">
-            <div className="absolute inset-0 bg-slate-950/90 z-0"></div>
-            <div className="relative z-10 p-8 bg-slate-900/90 border border-cyan-500/30 rounded-lg shadow-[0_0_50px_rgba(0,240,255,0.1)] max-w-md text-center backdrop-blur-md">
-                <div className="w-16 h-16 border-2 border-holo-cyan rounded-full flex items-center justify-center mx-auto mb-6 animate-pulse-slow">
-                    <div className="w-10 h-10 bg-holo-cyan/20 rounded-full"></div>
-                </div>
-                <h2 className="text-2xl font-bold text-white font-mono mb-2 tracking-widest">ALERTA DE SEGURANÇA</h2>
-                <p className="text-cyan-400/80 font-mono text-sm mb-8">
-                    É necessária autorização do Neural Link para acessar o mainframe do ECHO.
-                </p>
-                <button 
-                    onClick={handleAuthClick}
-                    className="bg-holo-cyan/10 hover:bg-holo-cyan/20 text-holo-cyan border border-holo-cyan px-8 py-3 rounded font-mono tracking-widest uppercase transition-all hover:shadow-[0_0_20px_rgba(0,240,255,0.3)]"
-                >
-                    INICIALIZAR CONEXÃO
-                </button>
-                <p className="mt-6 text-[10px] text-cyan-700 font-mono">
-                    CONTROLE DA MISSÃO // PROTOCOLO AURORA
-                </p>
-            </div>
-        </div>
-      );
-  }
 
   return (
     <div className="flex flex-col flex-1 h-full relative bg-[url('https://picsum.photos/id/903/1600/900')] bg-cover bg-center">
