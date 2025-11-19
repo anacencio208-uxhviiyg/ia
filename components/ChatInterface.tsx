@@ -30,7 +30,9 @@ const ChatInterface: React.FC = () => {
   }, [messages]);
 
   const getChatSession = async () => {
-    // If we already have a session, return it
+    // If we have a session, verify it's valid or just return it. 
+    // However, to be safe against key changes, we can check env again if needed, 
+    // but typically we reuse the session for context.
     if (chatSessionRef.current) {
       return chatSessionRef.current;
     }
@@ -40,16 +42,20 @@ const ChatInterface: React.FC = () => {
     
     // If no key in env, try the window.aistudio helper
     if (!apiKey && window.aistudio) {
-      const hasKey = await window.aistudio.hasSelectedApiKey();
-      if (!hasKey) {
-        await window.aistudio.openSelectKey();
+      try {
+        const hasKey = await window.aistudio.hasSelectedApiKey();
+        if (!hasKey) {
+           await window.aistudio.openSelectKey();
+        }
+      } catch (e) {
+        console.error("Erro ao verificar chave de API:", e);
       }
       // In some environments, we might need to wait a tick or access the updated env
       apiKey = process.env.API_KEY;
     }
 
     if (!apiKey) {
-      throw new Error("Chave de acesso neural não detectada.");
+      throw new Error("Chave de acesso neural (API KEY) não detectada. Por favor, selecione uma chave válida.");
     }
 
     // Initialize GenAI
@@ -102,10 +108,12 @@ const ChatInterface: React.FC = () => {
       const resultStream = await chat.sendMessageStream({ message: userMsgText });
       
       let fullText = '';
-      
+      let hasContent = false;
+
       for await (const chunk of resultStream) {
         const chunkText = (chunk as GenerateContentResponse).text;
         if (chunkText) {
+            hasContent = true;
             fullText += chunkText;
             setMessages(prev => prev.map(msg => 
                 msg.id === responseId 
@@ -113,6 +121,11 @@ const ChatInterface: React.FC = () => {
                 : msg
             ));
         }
+      }
+
+      if (!hasContent) {
+         // Even if the stream finishes, if no text came through, it's odd.
+         // Sometimes models return empty content if filtered.
       }
 
       // Mark streaming as done
@@ -125,22 +138,35 @@ const ChatInterface: React.FC = () => {
     } catch (err: any) {
       console.error("Communication breakdown:", err);
       
-      // Handle specific API Key errors by forcing a reset of the session
-      if (err.message && (err.message.includes("API key") || err.message.includes("403") || err.message.includes("not found"))) {
-          chatSessionRef.current = null; // Reset session
-          setError("Erro de Autenticação: Chave inválida ou expirada. Tente novamente.");
+      // CRITICAL: Restore input so user doesn't lose their text
+      setInputText(userMsgText);
+      
+      // Reset session to force reconnection/key check on next try
+      chatSessionRef.current = null;
+
+      let errorMessage = "Falha desconhecida.";
+      if (err.message) errorMessage = err.message;
+      
+      // Handle specific API Key errors
+      if (errorMessage.includes("API key") || errorMessage.includes("403") || errorMessage.includes("not found")) {
+          errorMessage = "Chave de Acesso Inválida ou Expirada.";
           if (window.aistudio) {
-             // Prompt user again if possible
              try { await window.aistudio.openSelectKey(); } catch(e) {}
           }
-      } else {
-          setError(`Erro de Sistema: ${err.message || "Falha na comunicação com ECHO."}`);
+      } else if (errorMessage.includes("503")) {
+          errorMessage = "Servidores ECHO indisponíveis (Sobrecarga). Tente novamente.";
       }
+
+      setError(`Erro de Transmissão: ${errorMessage}`);
       
-      // Clean up the streaming message if it failed empty
+      // Update the empty bubble with the error
       setMessages(prev => prev.map(msg => 
         msg.id === responseId
-        ? { ...msg, isStreaming: false, text: msg.text || " [SINAL PERDIDO] " } 
+        ? { 
+            ...msg, 
+            isStreaming: false, 
+            text: `[FALHA DE PROTOCOLO: ${errorMessage}]\n\n> Tentativa de reconexão automática iniciada...` 
+          } 
         : msg
       ));
 
@@ -152,8 +178,7 @@ const ChatInterface: React.FC = () => {
   // Try to connect on mount silently
   useEffect(() => {
     getChatSession().catch(() => {
-        // Ignore initial errors, we'll catch them when the user tries to send
-        // or we could show a "System Offline" indicator status here.
+        // Silent fail on init, will prompt on first user interaction
     });
   }, []);
 
@@ -187,7 +212,9 @@ const ChatInterface: React.FC = () => {
               className={`max-w-[85%] md:max-w-[70%] rounded p-4 border ${
                 msg.role === MessageRole.USER 
                   ? 'bg-cyan-950/40 border-cyan-700/50 text-cyan-50' 
-                  : 'bg-slate-900/90 border-cyan-900/30 text-cyan-100 shadow-[0_0_15px_rgba(0,240,255,0.1)]'
+                  : msg.text.includes("FALHA DE PROTOCOLO") 
+                    ? 'bg-red-950/40 border-red-900/50 text-red-200'
+                    : 'bg-slate-900/90 border-cyan-900/30 text-cyan-100 shadow-[0_0_15px_rgba(0,240,255,0.1)]'
               }`}
             >
               <div className="flex items-center gap-2 mb-2 border-b border-white/5 pb-1">
@@ -225,7 +252,7 @@ const ChatInterface: React.FC = () => {
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
             disabled={isLoading}
-            placeholder={isLoading ? "Recebendo transmissão..." : "Insira o comando para o Controle da Missão..."}
+            placeholder={isLoading ? "Processando..." : "Insira o comando para o Controle da Missão..."}
             className="flex-1 bg-slate-900/50 border border-cyan-900/50 rounded px-4 py-3 text-cyan-100 focus:outline-none focus:border-holo-cyan/70 focus:shadow-[0_0_10px_rgba(0,240,255,0.2)] font-mono text-sm placeholder-cyan-800 transition-all disabled:opacity-50"
           />
           <button
