@@ -59,7 +59,11 @@ const ChatInterface: React.FC = () => {
 
   const handleSendMessage = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!inputText.trim() || !chatSessionRef.current || isLoading) return;
+    
+    // Capture the current chat session locally to ensure it doesn't change or become null during async ops
+    const chat = chatSessionRef.current;
+
+    if (!inputText.trim() || !chat || isLoading) return;
 
     const userMsgText = inputText;
     setInputText('');
@@ -86,7 +90,7 @@ const ChatInterface: React.FC = () => {
         isStreaming: true
       }]);
 
-      const resultStream = await chatSessionRef.current.sendMessageStream({ message: userMsgText });
+      const resultStream = await chat.sendMessageStream({ message: userMsgText });
       
       let fullText = '';
       
